@@ -2,14 +2,75 @@ from getdata import Data
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+device = "cuda"
 
 def main():
     file = Data("book.txt")
     corpus, vocab = file.build()
     data = Book(corpus, vocab)
-    print(torch.argmax(data[:5], dim=1))
-    print(corpus[:5])
+    # print(torch.argmax(data[0][0], dim=1))
+    dataloader = DataLoader(data, batch_size=1024*4, shuffle=True)
+    # X = N x L x H
+    #   = 64 x 30 x 28
+    # y = N x H
+    #   = 64 x 28
+    model = ScrRNN(len(vocab), 128*2).cuda()
+
+    try:
+        model.load_state_dict(torch.load("./model.pt"))
+    except:
+        pass
+
+    num_epochs = 1000
+    optimizer = optim.Adam(model.parameters(), lr = 0.001)
+    loss_fn = nn.CrossEntropyLoss()
+
+    losses = []
+
+    for epoch in range(num_epochs):
+        epoch_loss = 0
+        sum = 0
+        for i, (X, y) in enumerate(dataloader):
+            optimizer.zero_grad()
+            preds = model(X)
+            loss = loss_fn(preds, y)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss
+            sum += 1
+
+        print(f"Epoch: {epoch+1}, loss: {epoch_loss}")
+        torch.save(model.state_dict(), "./model.pt")
+
+        losses.append(epoch_loss.item())
+
+    print(gen_text(model, file, vocab, "There I was", 100))
+
+    sns.relplot(losses, kind="line")
+    plt.show()
+
+
+def gen_text(model, file, vocab, prefix, length):
+    prefix = file._preprocess(prefix)
+    gen_text = prefix
+    for i in range(length):
+        prefix = torch.tensor(vocab[file._tokenize(gen_text)])
+        prefix = F.one_hot(prefix, num_classes=len(vocab)).to(dtype=torch.float32, device=device)
+        txt = model(prefix)
+        txt = vocab.to_tokens(torch.argmax(txt))
+        gen_text += txt
+    return gen_text
+
+
+        
+
+
+
 
 
 class ScrRNN(nn.Module):
@@ -20,18 +81,21 @@ class ScrRNN(nn.Module):
     
     def forward(self, x):
         x, _ = self.rnn(x)
-        return self.fc(x)
+        x = self.fc(x)
+        return torch.mean(x, dim=1)
 
 class Book(Dataset):
-    def __init__(self, corpus, vocab):
+    def __init__(self, corpus, vocab, seq_len=30):
         self.corpus, self.vocab = torch.tensor(corpus), vocab
+        self.seq_len = seq_len
         self.tokens = F.one_hot(self.corpus, num_classes=len(self.vocab))
+        self.tokens = self.tokens.to(dtype=torch.float32, device=device)
 
     def __len__(self):
-        return len(self.tokens)
+        return len(self.tokens) - self.seq_len - 1
 
     def __getitem__(self, idx):
-        return self.tokens[idx]
+        return self.tokens[idx:idx+self.seq_len], self.tokens[idx+self.seq_len+1]
 
 
 
