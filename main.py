@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.tensorboard import SummaryWriter
 import seaborn as sns
 import matplotlib.pyplot as plt
 
@@ -26,10 +27,11 @@ def main():
     except:
         pass
 
-    num_epochs = 1000
+    num_epochs = 0
     optimizer = optim.Adam(model.parameters(), lr = 0.001)
     loss_fn = nn.CrossEntropyLoss()
-
+    
+    writer = SummaryWriter(f"runs/trying-tensorboard")
     losses = []
 
     for epoch in range(num_epochs):
@@ -45,14 +47,19 @@ def main():
             sum += 1
 
         print(f"Epoch: {epoch+1}, loss: {epoch_loss}")
-        torch.save(model.state_dict(), "./model.pt")
+        writer.add_scalar("Training Loss", epoch_loss, global_step=epoch)
+
+        if (epoch == 0) or (losses[-1] > epoch_loss.item()):
+            torch.save(model.state_dict(), "./model.pt")
+
 
         losses.append(epoch_loss.item())
 
-    print(gen_text(model, file, vocab, "There I was", 100))
+    txt = input("Prefix: ")
+    print(gen_text(model, file, vocab, txt, 30))
 
-    sns.relplot(losses, kind="line")
-    plt.show()
+    #sns.relplot(losses, kind="line")
+    #plt.show()
 
 
 def gen_text(model, file, vocab, prefix, length):
