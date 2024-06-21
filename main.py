@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import seaborn as sns
 import matplotlib.pyplot as plt
+from torcheval.metrics import Perplexity
 
 device = "cuda"
 
@@ -15,7 +16,7 @@ def main():
     corpus, vocab = file.build()
     data = Book(corpus, vocab)
     # print(torch.argmax(data[0][0], dim=1))
-    dataloader = DataLoader(data, batch_size=1024*4, shuffle=True)
+    dataloader = DataLoader(data, batch_size=900, shuffle=True)
     # X = N x L x H
     #   = 64 x 30 x 28
     # y = N x H
@@ -27,26 +28,31 @@ def main():
     except:
         pass
 
-    num_epochs = 700
+    num_epochs = 3
     optimizer = optim.Adam(model.parameters(), lr = 0.001)
     loss_fn = nn.CrossEntropyLoss()
+    ppl = Perplexity(device="cuda")
     
     writer = SummaryWriter(f"runs/trying-tensorboard")
     losses = []
 
     for epoch in range(num_epochs):
         epoch_loss = 0
+        epoch_ppl = 0
         sum = 0
         for i, (X, y) in enumerate(dataloader):
             optimizer.zero_grad()
-            preds = model(X)
+            preds = model(X).cuda()
             loss = loss_fn(preds, y)
             loss.backward()
             optimizer.step()
             epoch_loss += loss
+            p = torch.argmax(y, dim=2).cuda()
+            ppl.update(preds, p)
+            epoch_ppl += ppl.compute()
             sum += 1
 
-        print(f"Epoch: {epoch+1}, loss: {epoch_loss}")
+        print(f"Epoch: {epoch+1}, loss: {epoch_loss}, ppl: {epoch_ppl/sum}")
         writer.add_scalar("Training Loss", epoch_loss, global_step=epoch)
 
         if (epoch == 0) or (losses[-1] > epoch_loss.item()):
