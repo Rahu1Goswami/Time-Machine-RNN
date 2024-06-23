@@ -7,7 +7,6 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import seaborn as sns
 import matplotlib.pyplot as plt
-from torcheval.metrics import Perplexity
 
 device = "cuda"
 
@@ -28,10 +27,9 @@ def main():
     except:
         pass
 
-    num_epochs = 3
+    num_epochs = 0
     optimizer = optim.Adam(model.parameters(), lr = 0.001)
     loss_fn = nn.CrossEntropyLoss()
-    ppl = Perplexity(device="cuda")
     
     writer = SummaryWriter(f"runs/trying-tensorboard")
     losses = []
@@ -47,13 +45,10 @@ def main():
             loss.backward()
             optimizer.step()
             epoch_loss += loss
-            p = torch.argmax(y, dim=2).cuda()
-            ppl.update(preds, p)
-            epoch_ppl += ppl.compute()
             sum += 1
 
-        print(f"Epoch: {epoch+1}, loss: {epoch_loss}, ppl: {epoch_ppl/sum}")
-        writer.add_scalar("Training Loss", epoch_loss, global_step=epoch)
+        print(f"Epoch: {epoch+1}, loss: {epoch_loss}")
+        writer.add_scalar("Training Loss", epoch_loss, global_step=epoch+30)
 
         if (epoch == 0) or (losses[-1] > epoch_loss.item()):
             torch.save(model.state_dict(), "./model.pt")
@@ -64,8 +59,8 @@ def main():
     txt = input("Prefix: ")
     print(gen_text(model, file, vocab, txt, 30))
 
-    #sns.relplot(losses, kind="line")
-    #plt.show()
+    sns.relplot(losses, kind="line")
+    plt.show()
 
 
 def gen_text(model, file, vocab, prefix, length):
@@ -83,7 +78,8 @@ def gen_text(model, file, vocab, prefix, length):
 class ScrRNN(nn.Module):
     def __init__(self, num_inp, num_hidden):
         super().__init__()
-        self.rnn = nn.RNN(num_inp, num_hidden, batch_first=True) # Input should be N x L x H_in
+        # self.rnn = nn.RNN(num_inp, num_hidden, batch_first=True) # Input should be N x L x H_in
+        self.rnn = nn.LSTM(num_inp, num_hidden, batch_first=True) # Input should be N x L x H_in
         self.fc = nn.Linear(num_hidden, num_inp)
     
     def forward(self, x):
